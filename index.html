@@ -130,6 +130,19 @@ main{max-width:560px;margin:0 auto;padding:14px 16px 0}
   background:var(--warn-soft);color:var(--warn);
   border-color:color-mix(in oklab,var(--warn) 35%,var(--line));
 }
+.lock{
+  position:fixed;inset:0;z-index:100;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  padding:24px;text-align:center;
+}
+.lock .logo{width:46px;height:46px;font-size:22px;border-radius:12px}
+.lock input{
+  width:min(240px,78vw);padding:12px;text-align:center;font-size:22px;letter-spacing:8px;
+  border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);
+}
+.lock input:focus{outline:2px solid var(--accent);outline-offset:1px}
+.lock .lerr{color:var(--danger);font-size:13px;min-height:1.2em;margin:0}
+.lock small{color:var(--muted);font-size:12px}
 .fab{
   position:fixed;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:20;
   width:54px;height:54px;border-radius:50%;border:none;cursor:pointer;
@@ -199,6 +212,28 @@ dialog small{display:block;margin-top:4px;font-size:11.5px;color:var(--muted)}
 
 <button id="fab" class="fab" aria-label="添加存单">＋</button>
 
+<div id="lock" class="lock" hidden>
+  <span class="logo" aria-hidden="true">存</span>
+  <form id="lockForm">
+    <input id="lockPin" type="password" inputmode="numeric" maxlength="6" placeholder="••••" autocomplete="off">
+    <p class="lerr" id="lockErr"></p>
+    <button class="btn primary" type="submit">解锁</button>
+  </form>
+  <small>数据加密在本机 · 忘了 PIN 可用备份文件恢复</small>
+</div>
+
+<dialog id="pinDlg" aria-labelledby="pinTitle">
+  <h2 id="pinTitle">设置锁屏 PIN</h2>
+  <label><span>输入 4-6 位数字 PIN</span><input id="pinNew" type="password" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+  <label><span>再输一遍确认</span><input id="pinAgain" type="password" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+  <p class="hint" id="pinHint">PIN 只在本机存哈希，无法找回；忘了只能用备份文件清空重建。</p>
+  <div class="row">
+    <span class="grow"></span>
+    <button type="button" id="pinCancel" class="btn">取消</button>
+    <button type="button" id="pinSave" class="btn primary">保存</button>
+  </div>
+</dialog>
+
 <dialog id="formDlg" aria-labelledby="formTitle">
   <form id="f" novalidate>
     <h2 id="formTitle">添加存单</h2>
@@ -236,6 +271,8 @@ dialog small{display:block;margin-top:4px;font-size:11.5px;color:var(--muted)}
     <button id="btnExportCsv" class="btn">导出 CSV</button>
     <button id="btnImport" class="btn">导入备份…</button>
     <button id="btnClear" class="btn danger">清空全部数据</button>
+    <button id="btnPin" class="btn">设置锁屏 PIN</button>
+    <button id="btnPinOff" class="btn" hidden>移除 PIN</button>
   </div>
   <input id="importFile" type="file" accept=".json,application/json" hidden>
   <div class="row"><span class="grow"></span><button id="dClose" class="btn btn-sm">关闭</button></div>
@@ -499,8 +536,77 @@ $('#groups').addEventListener('keydown',e=>{
     if(c)openForm(c.dataset.id);
   }
 });
+/* ---- 锁屏 PIN（A档：哈希门禁，防随手翻看） ---- */
+const KEY_PIN='cq-ledger.pin';
+const PBKDF2_ITER=120000;
+let hiddenAt=0;
+const getPinRec=()=>localStorage.getItem(KEY_PIN)||'';
+async function deriveHash(pin,saltHex){
+  const enc=new TextEncoder();
+  const key=await crypto.subtle.importKey('raw',enc.encode(pin),'PBKDF2',false,['deriveBits']);
+  const salt=Uint8Array.from(saltHex.match(/.{2}/g).map(h=>parseInt(h,16)));
+  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt,iterations:PBKDF2_ITER},key,256);
+  return [...new Uint8Array(bits)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function setPin(pin){
+  const salt=[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('');
+  const h=await deriveHash(pin,salt);
+  try{localStorage.setItem(KEY_PIN,salt+':'+h)}catch{}
+  updatePinBtns();
+}
+async function verifyPin(pin){
+  const rec=getPinRec();
+  if(!rec)return true;
+  const [salt,h]=rec.split(':');
+  try{return (await deriveHash(pin,salt))===h}catch{return false}
+}
+function doLock(){
+  if(!getPinRec())return;
+  document.querySelectorAll('dialog[open]').forEach(d=>d.close());
+  $('#lock').hidden=false;
+  $('#lockPin').value='';$('#lockErr').textContent='';
+}
+function doUnlock(){$('#lock').hidden=true}
+$('#lockForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const pin=$('#lockPin').value.trim();
+  if(await verifyPin(pin)){doUnlock()}
+  else{$('#lockErr').textContent='PIN 不对';$('#lockPin').value=''}
+});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)hiddenAt=Date.now();
+  else if(hiddenAt&&Date.now()-hiddenAt>60000)doLock();
+});
+function updatePinBtns(){
+  const has=!!getPinRec();
+  $('#btnPin').textContent=has?'修改 PIN':'设置锁屏 PIN';
+  $('#btnPinOff').hidden=!has;
+}
+$('#btnPin').onclick=()=>{
+  $('#pinTitle').textContent=getPinRec()?'修改 PIN':'设置锁屏 PIN';
+  $('#pinNew').value='';$('#pinAgain').value='';
+  $('#pinHint').textContent='4-6 位数字。PIN 只在本机存哈希，无法找回；忘了只能用备份文件清空重建。';
+  $('#pinDlg').showModal();
+};
+$('#pinCancel').onclick=()=>$('#pinDlg').close();
+$('#pinSave').onclick=async()=>{
+  const p1=$('#pinNew').value.trim(),p2=$('#pinAgain').value.trim();
+  if(!/^\d{4,6}$/.test(p1)){$('#pinHint').textContent='PIN 需为 4-6 位数字';return}
+  if(p1!==p2){$('#pinHint').textContent='两次输入不一致';return}
+  await setPin(p1);
+  $('#pinDlg').close();
+  alert('PIN 已设置。下次打开、或切后台超过 1 分钟回来时需要输入。');
+};
+$('#btnPinOff').onclick=async()=>{
+  const p=prompt('输入当前 PIN 以移除');
+  if(p==null)return;
+  if(await verifyPin(p.trim())){localStorage.removeItem(KEY_PIN);updatePinBtns();alert('PIN 已移除')}
+  else alert('PIN 不对');
+};
 render();
 renderBk();
+updatePinBtns();
+if(getPinRec())doLock();
 if('serviceWorker' in navigator&&location.protocol==='https:'){
   navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }
