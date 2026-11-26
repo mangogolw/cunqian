@@ -3,12 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>存钱小本 · 本地版</title>
+<title>按兵不动</title>
 <meta name="description" content="本地优先的存单/保险记账本：数据只存在本机浏览器，支持导出备份。">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f5f0e6">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#211d18">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="按兵不动">
+<link rel="apple-touch-icon" href="icon-180.png">
 <style>
 :root{
   --bg:oklch(95.5% 0.012 85);
@@ -176,8 +178,8 @@ dialog small{display:block;margin-top:4px;font-size:11.5px;color:var(--muted)}
 </head>
 <body>
 <header>
-  <span class="logo" aria-hidden="true">存</span>
-  <h1>存钱小本<small>本地版 · 数据不出手机</small></h1>
+  <span class="logo" aria-hidden="true">兵</span>
+  <h1>按兵不动<small>数据不出手机</small></h1>
   <span class="grow"></span>
   <button id="btnData" class="btn btn-sm">数据</button>
 </header>
@@ -202,7 +204,7 @@ dialog small{display:block;margin-top:4px;font-size:11.5px;color:var(--muted)}
 <button id="fab" class="fab" aria-label="添加存单">＋</button>
 
 <div id="lock" class="lock" hidden>
-  <span class="logo" aria-hidden="true">存</span>
+  <span class="logo" aria-hidden="true">兵</span>
   <button id="btnFace" class="btn primary" hidden>扫脸解锁 Face ID</button>
   <form id="lockForm">
     <input id="lockPin" type="password" inputmode="numeric" maxlength="6" placeholder="••••" autocomplete="off">
