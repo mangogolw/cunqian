@@ -122,15 +122,7 @@ main{max-width:560px;margin:0 auto;padding:14px 16px 0}
   margin-top:24px;padding:32px 16px;text-align:center;color:var(--muted);
   border:1.5px dashed var(--line);border-radius:var(--radius);font-size:14px;
 }
-.bkbar{
-  display:flex;align-items:center;gap:8px;justify-content:space-between;
-  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
-  padding:8px 8px 8px 14px;margin-bottom:14px;font-size:12.5px;color:var(--muted);
-}
-.bkbar.stale{
-  background:var(--warn-soft);color:var(--warn);
-  border-color:color-mix(in oklab,var(--warn) 35%,var(--line));
-}
+#dataTitle small{font-size:11.5px;color:var(--muted);font-weight:400;margin-left:8px;letter-spacing:0}
 .lock{
   position:fixed;inset:0;z-index:100;background:var(--bg);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
@@ -191,10 +183,6 @@ dialog small{display:block;margin-top:4px;font-size:11.5px;color:var(--muted)}
 </header>
 
 <main>
-  <div id="bkBar" class="bkbar">
-    <span id="bkDate">尚未备份</span>
-    <button id="bkNow" class="btn btn-sm">备份</button>
-  </div>
   <section class="summary" aria-label="汇总">
     <div class="sum-grid">
       <div class="sum"><label>总本金（进行中）</label><div class="v"><span id="sPrincipal">0.00</span><small> 元</small></div></div>
@@ -266,8 +254,8 @@ dialog small{display:block;margin-top:4px;font-size:11.5px;color:var(--muted)}
 </dialog>
 
 <dialog id="dataDlg" aria-labelledby="dataTitle">
-  <h2 id="dataTitle">数据管理</h2>
-  <p class="hint">数据仅保存在本机浏览器（localStorage），页面不联网上传任何内容。换手机、清浏览器数据前，先点上面的「备份」。</p>
+  <h2 id="dataTitle">数据管理<small id="bkStamp"></small></h2>
+  <p class="hint">数据仅保存在本机浏览器（localStorage），页面不联网上传任何内容。换手机、清浏览器数据前，先「导出 JSON 备份」。</p>
   <div class="grid2">
     <button id="btnExportJson" class="btn">导出 JSON 备份</button>
     <button id="btnExportCsv" class="btn">导出 CSV</button>
@@ -454,15 +442,10 @@ const lastBkAt=()=>Number(localStorage.getItem(KEY_BK))||0;
 function markBackedUp(){try{localStorage.setItem(KEY_BK,String(Date.now()))}catch{}renderBk()}
 function renderBk(){
   const t=lastBkAt();
-  const bar=$('#bkBar');
-  if(!t){
-    $('#bkDate').textContent='尚未备份';
-    bar.classList.toggle('stale',state.items.length>0);
-    return;
-  }
+  const el=$('#bkStamp');
+  if(!t){el.textContent='';return}
   const d=new Date(t);
-  $('#bkDate').textContent=`上次备份：${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  bar.classList.toggle('stale',state.items.length>0&&(Date.now()-t)>=7*DAY);
+  el.textContent=`上次备份：${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 async function exportJson(){
   const name=`存钱小本备份-${todayStr()}.json`;
@@ -478,7 +461,6 @@ async function exportJson(){
   markBackedUp();
 }
 $('#btnExportJson').onclick=exportJson;
-$('#bkNow').onclick=exportJson;
 $('#btnExportCsv').onclick=()=>{
   const head='机构,类型,金额,年利率%,开始,到期,天数,预计利息,到期本息,状态,备注';
   const rows=state.items.map(i=>{
