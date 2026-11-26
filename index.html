@@ -53,6 +53,7 @@
   }
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%}
 body{
   margin:0;background:var(--bg);color:var(--ink);
@@ -214,10 +215,11 @@ dialog small{display:block;margin-top:4px;font-size:11.5px;color:var(--muted)}
 
 <div id="lock" class="lock" hidden>
   <span class="logo" aria-hidden="true">存</span>
+  <button id="btnFace" class="btn primary" hidden>扫脸解锁 Face ID</button>
   <form id="lockForm">
     <input id="lockPin" type="password" inputmode="numeric" maxlength="6" placeholder="••••" autocomplete="off">
     <p class="lerr" id="lockErr"></p>
-    <button class="btn primary" type="submit">解锁</button>
+    <button class="btn" type="submit">用 PIN 解锁</button>
   </form>
   <small>数据加密在本机 · 忘了 PIN 可用备份文件恢复</small>
 </div>
@@ -273,6 +275,7 @@ dialog small{display:block;margin-top:4px;font-size:11.5px;color:var(--muted)}
     <button id="btnClear" class="btn danger">清空全部数据</button>
     <button id="btnPin" class="btn">设置锁屏 PIN</button>
     <button id="btnPinOff" class="btn" hidden>移除 PIN</button>
+    <button id="btnFaceSetup" class="btn" hidden>启用面容解锁（Face ID）</button>
   </div>
   <input id="importFile" type="file" accept=".json,application/json" hidden>
   <div class="row"><span class="grow"></span><button id="dClose" class="btn btn-sm">关闭</button></div>
@@ -538,9 +541,12 @@ $('#groups').addEventListener('keydown',e=>{
 });
 /* ---- 锁屏 PIN（A档：哈希门禁，防随手翻看） ---- */
 const KEY_PIN='cq-ledger.pin';
+const KEY_FACE='cq-ledger.face';
+const RP_ID='mangogolw.github.io';
 const PBKDF2_ITER=120000;
 let hiddenAt=0;
 const getPinRec=()=>localStorage.getItem(KEY_PIN)||'';
+const getFaceRec=()=>{try{return JSON.parse(localStorage.getItem(KEY_FACE)||'null')}catch{return null}};
 async function deriveHash(pin,saltHex){
   const enc=new TextEncoder();
   const key=await crypto.subtle.importKey('raw',enc.encode(pin),'PBKDF2',false,['deriveBits']);
@@ -565,6 +571,40 @@ function doLock(){
   document.querySelectorAll('dialog[open]').forEach(d=>d.close());
   $('#lock').hidden=false;
   $('#lockPin').value='';$('#lockErr').textContent='';
+  if(getFaceRec())tryUnlockFace();
+}
+async function tryUnlockFace(){
+  if(await unlockFace())doUnlock();
+}
+async function unlockFace(){
+  const rec=getFaceRec();
+  if(!rec||!window.PublicKeyCredential)return false;
+  try{
+    await navigator.credentials.get({publicKey:{
+      challenge:Uint8Array.from(rec.challenge.split(',').map(Number)),
+      rpId:RP_ID,userVerification:'required',timeout:60000,
+      allowCredentials:[{type:'public-key',id:Uint8Array.from(atob(rec.id),c=>c.charCodeAt(0))}]
+    }});
+    return true;
+  }catch(e){return false}
+}
+async function setupFace(){
+  if(!window.PublicKeyCredential){alert('此环境不支持面容解锁');return}
+  try{
+    const challenge=crypto.getRandomValues(new Uint8Array(32));
+    const cred=await navigator.credentials.create({publicKey:{
+      challenge,
+      rp:{id:RP_ID,name:'存钱小本'},
+      user:{id:new TextEncoder().encode('cunqian-owner'),name:'cunqian-owner',displayName:'机主'},
+      pubKeyCredParams:[{alg:-7,type:'public-key'},{alg:-257,type:'public-key'}],
+      authenticatorSelection:{authenticatorAttachment:'platform',residentKey:'preferred',userVerification:'required'},
+      timeout:60000
+    }});
+    const idB64=btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
+    localStorage.setItem(KEY_FACE,JSON.stringify({id:idB64,challenge:[...challenge].join(',')}));
+    updateFaceBtns();
+    alert('面容解锁已启用。锁屏时扫脸即可进入，PIN 仍可作备用。');
+  }catch(e){alert('绑定失败：'+(e.message||e))}
 }
 function doUnlock(){$('#lock').hidden=true}
 $('#lockForm').addEventListener('submit',async e=>{
@@ -577,10 +617,17 @@ document.addEventListener('visibilitychange',()=>{
   if(document.hidden)hiddenAt=Date.now();
   else if(hiddenAt&&Date.now()-hiddenAt>60000)doLock();
 });
+function updateFaceBtns(){
+  const has=!!getPinRec(),face=!!getFaceRec();
+  $('#btnFaceSetup').hidden=!(has&&window.PublicKeyCredential);
+  $('#btnFaceSetup').textContent=face?'重新绑定面容解锁':'启用面容解锁（Face ID）';
+  $('#btnFace').hidden=!face;
+}
 function updatePinBtns(){
   const has=!!getPinRec();
   $('#btnPin').textContent=has?'修改 PIN':'设置锁屏 PIN';
   $('#btnPinOff').hidden=!has;
+  updateFaceBtns();
 }
 $('#btnPin').onclick=()=>{
   $('#pinTitle').textContent=getPinRec()?'修改 PIN':'设置锁屏 PIN';
@@ -600,9 +647,14 @@ $('#pinSave').onclick=async()=>{
 $('#btnPinOff').onclick=async()=>{
   const p=prompt('输入当前 PIN 以移除');
   if(p==null)return;
-  if(await verifyPin(p.trim())){localStorage.removeItem(KEY_PIN);updatePinBtns();alert('PIN 已移除')}
+  if(await verifyPin(p.trim())){
+    localStorage.removeItem(KEY_PIN);localStorage.removeItem(KEY_FACE);
+    updatePinBtns();alert('PIN 已移除（面容解锁一并关闭）');
+  }
   else alert('PIN 不对');
 };
+$('#btnFaceSetup').onclick=setupFace;
+$('#btnFace').onclick=tryUnlockFace;
 render();
 renderBk();
 updatePinBtns();
